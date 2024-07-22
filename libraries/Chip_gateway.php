@@ -154,7 +154,13 @@ class Chip_gateway extends App_gateway
      */
     public function process_payment($data)
     {
-      $contact = $this->ci->clients_model->get_contacts($data['invoice']->client->userid, ['active' => 1,'is_primary'=> 1])[0];
+      $contacts =$this->ci->clients_model->get_contacts($data['invoice']->client->userid, ['active' => 1,'is_primary'=> 1]);
+      if (empty($contacts)) {
+        set_alert( 'danger', 'Contact is unavailable. Pleaes create contact to allow payment.' );
+        redirect(site_url('invoice/' . $data['invoice']->id . '/' . $data['invoice']->hash));
+      }
+
+      $contact = $contacts[0];
 
       $callback_url = site_url('chip/chip/webhook/' . $data['invoice']->id . '/' . $data['invoice']->hash . '/' . $data['payment_attempt']->reference);
 
@@ -283,7 +289,7 @@ class Chip_gateway extends App_gateway
     private function get_first_error( array $payment) {
       foreach($payment as $key => $value) {
         if (!is_numeric($key)) {
-          return $this->get_first_error($value);
+          return $key . ' ' . $this->get_first_error($value);
         } else {
           return $value['message'];
         }
