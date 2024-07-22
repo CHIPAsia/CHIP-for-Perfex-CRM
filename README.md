@@ -23,7 +23,7 @@ Set the **Brand ID** and **Secret Key** in the payment gateway settings.
 
 Installation of this module will create a file in `/controllers/gateways/Chip.php`.
 
-However, if your setup have restrictive file permission or within ephemaral file system, you need to add this line below in your `application/config.php` file:
+However, if your setup have restrictive file permission or within ephemaral file system, you need to add this line below in your `application/config/config.php` file:
 
 ```php
 $config['csrf_exclude_uris'][] = 'chip/chip/webhook';
