@@ -10,7 +10,7 @@ Developed and tested with Perfex CRM version 3.1.5.
 
 ## Installation
 
-* [Download zip file](https://github.com/CHIPAsia/chip-for-perfex/archive/refs/heads/main.zip).
+* [Download zip](https://github.com/CHIPAsia/CHIP-for-Perfex-CRM/releases/) file from release page. Choose **chip.zip** file instead of **Source code (zip)** file.
 * Log in to your Perfex admin panel and go: **Setup** -> **Modules**.
 * Upload module and install.
 * Activate plugin.
