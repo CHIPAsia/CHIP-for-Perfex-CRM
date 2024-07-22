@@ -33,6 +33,10 @@ Since Perfex CRM only exclude CSRF protection for URL routes that started with `
 
 Alternatively, you may copy the file from `modules/chip/controllers/Chip.php` to `controllers/gateways/Chip.php`.
 
+## Common installation issues
+
+After installation of the module where the module is not listed, check `modules/` directory. Make sure the directory name is set `chip` instead of `CHIP-for-Perfex-CRM-main`.
+
 ## Other
 
 Facebook: [Merchants & DEV Community](https://www.facebook.com/groups/3210496372558088)
