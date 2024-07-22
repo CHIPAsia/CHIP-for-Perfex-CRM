@@ -154,7 +154,7 @@ class Chip_gateway extends App_gateway
      */
     public function process_payment($data)
     {
-      $contact = $this->ci->clients_model->get_contact($data['invoice']->client->userid);
+      $contact = $this->ci->clients_model->get_contacts($data['invoice']->client->userid, ['active' => 1,'is_primary'=> 1])[0];
 
       $callback_url = site_url('chip/chip/webhook/' . $data['invoice']->id . '/' . $data['invoice']->hash . '/' . $data['payment_attempt']->reference);
 
@@ -201,8 +201,8 @@ class Chip_gateway extends App_gateway
         ],
         'brand_id' => $this->getSetting('brand_id'),
         'client' => [
-          'email'     => $contact->email,
-          'full_name' => substr( $contact->firstname . ' ' . $contact->lastname, 0, 128 ),
+          'email'     => $contact['email'],
+          'full_name' => substr( $contact['firstname'] . ' ' . $contact['lastname'], 0, 128 ),
           'phone'     => substr( $data['invoice']->client->phonenumber, 0, 32 ),
           'legal_name'=> substr( $data['invoice']->client->company, 0, 128 ),
           'personal_code' => $data['invoice']->client->userid,
