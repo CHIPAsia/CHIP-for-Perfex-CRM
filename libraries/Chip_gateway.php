@@ -170,12 +170,6 @@ class Chip_gateway extends App_gateway
       
       $redirect_url = site_url('chip/chip/redirect/' . $data['invoice']->id . '/' . $data['invoice']->hash . '/' . $data['payment_attempt']->reference);
 
-      $payment_method_whitelist = $this->getSetting('payment_method_whitelist');
-      $payment_method_whitelist = explode(',', $payment_method_whitelist);
-      foreach($payment_method_whitelist as &$pmw) {
-        $pmw = trim($pmw);
-      }
-
       $due_strict_timing = preg_replace('/[^0-9]/', '', $this->getSetting('due_strict'));
       if ( empty( $due_strict_timing ) ) {
         $due_strict_timing = 60;
@@ -189,7 +183,6 @@ class Chip_gateway extends App_gateway
       }
 
       $params = [
-        'payment_method_whitelist' => $payment_method_whitelist,
         'success_callback' => $callback_url,
         'success_redirect' => $redirect_url,
         'failure_redirect' => $redirect_url,
@@ -240,6 +233,32 @@ class Chip_gateway extends App_gateway
         if ( empty( $value ) ) {
           unset( $params['client'][$key] );
         }
+      }
+
+      $payment_method_whitelist = $this->getSetting('payment_method_whitelist');
+      if (!empty($payment_method_whitelist)) {
+        $payment_method_whitelist = explode(',', $payment_method_whitelist);
+
+        for ($i = 0; $i < sizeof($payment_method_whitelist); $i++) {
+          $payment_method_whitelist[$i] = trim($payment_method_whitelist[$i]);
+
+          if (!in_array($payment_method_whitelist[$i], ['fpx','fpx_b2b1','mastercard','maestro','visa','razer','razer_atome','razer_grabpay','razer_maybankqr','razer_shopeepay','razer_tng','duitnow_qr'])) {
+            unset($payment_method_whitelist[$i]);
+          }
+        }
+
+        foreach ( ['razer_atome', 'razer_grabpay', 'razer_tng', 'razer_shopeepay','razer_maybankqr'] as $ewallet ) {
+          if ( in_array($ewallet, $payment_method_whitelist ) ) {
+            if ( !in_array( 'razer', $payment_method_whitelist ) ) {
+              $payment_method_whitelist[]= 'razer';
+              break;
+            }
+          }
+        }
+      }
+
+      if (is_array($payment_method_whitelist) AND !empty($payment_method_whitelist)) {
+        $params['payment_method_whitelist'] = $payment_method_whitelist;
       }
 
       $this->ci->load->library(CHIP_MODULE_NAME . '/chip_api', [$this->getSetting('secret_key'), '']);
