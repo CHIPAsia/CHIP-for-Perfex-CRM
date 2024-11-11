@@ -182,6 +182,7 @@ class Chip_gateway extends App_gateway
       'failure_redirect' => $redirect_url,
       'cancel_redirect' => $redirect_url,
       'creator_agent' => 'PerfexCRM: 1.0.1',
+      'platform' => 'perfexcrm',
       'reference' => $data['invoiceid'],
       'due' => $due_strict_timing,
       'send_receipt' => $this->getSetting('send_receipt'),
