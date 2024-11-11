@@ -154,14 +154,6 @@ class Chip_gateway extends App_gateway
      */
     public function process_payment($data)
     {
-      $contacts =$this->ci->clients_model->get_contacts($data['invoice']->client->userid, ['active' => 1,'is_primary'=> 1]);
-      if (empty($contacts)) {
-        set_alert( 'danger', 'Contact is unavailable. Pleaes create contact to allow payment.' );
-        redirect(site_url('invoice/' . $data['invoice']->id . '/' . $data['invoice']->hash));
-      }
-
-      $contact = $contacts[0];
-
       $callback_url = site_url('chip/chip/webhook/' . $data['invoice']->id . '/' . $data['invoice']->hash . '/' . $data['payment_attempt']->reference);
 
       if ( file_exists(APPPATH.'/controllers/gateways/Chip.php')) {
@@ -199,18 +191,7 @@ class Chip_gateway extends App_gateway
           'products'       => [],
         ],
         'brand_id' => $this->getSetting('brand_id'),
-        'client' => [
-          'email'     => $contact['email'],
-          'full_name' => substr( $contact['firstname'] . ' ' . $contact['lastname'], 0, 128 ),
-          'phone'     => substr( $data['invoice']->client->phonenumber, 0, 32 ),
-          'legal_name'=> substr( $data['invoice']->client->company, 0, 128 ),
-          'personal_code' => $data['invoice']->client->userid,
-          'street_address'  => substr( $data['invoice']->client->address, 0, 128 ) ,
-          'country'         => substr( get_country_short_name($data['invoice']->client->country), 0, 2 ),
-          'city'            => substr( $data['invoice']->client->city, 0, 128 ) ,
-          'zip_code'        => substr( $data['invoice']->client->zip, 0, 32 ),
-          'state'           => substr( $data['invoice']->client->state, 0, 128 ),
-        ],
+        'client' => [],
       ];
 
       foreach ( $data['invoice']->items as $item ) {
@@ -223,6 +204,29 @@ class Chip_gateway extends App_gateway
           'price'    => round( $item['rate'] * 100 ),
           'quantity' => $qty
         );
+      }
+
+      $contacts = $this->ci->clients_model->get_contacts($data['invoice']->client->userid, ['active' => 1, 'is_primary' => 1]);
+      if (empty($contacts)) {
+        $params['client'] = [
+          'email' => $this->getSetting('email_fallback'),
+          'full_name' => substr($data['invoice']->client->company,0,128)
+        ];
+      } else {
+        $contact = $contacts[0];
+  
+        $params['client'] = [
+          'email' => $contact['email'],
+          'full_name' => substr($contact['firstname'] . ' ' . $contact['lastname'], 0, 128),
+          'phone' => substr($data['invoice']->client->phonenumber, 0, 32),
+          'legal_name' => substr($data['invoice']->client->company, 0, 128),
+          'personal_code' => $data['invoice']->client->userid,
+          'street_address' => substr($data['invoice']->client->address, 0, 128),
+          'country' => substr(get_country_short_name($data['invoice']->client->country), 0, 2),
+          'city' => substr($data['invoice']->client->city, 0, 128),
+          'zip_code' => substr($data['invoice']->client->zip, 0, 32),
+          'state' => substr($data['invoice']->client->state, 0, 128),
+        ];
       }
 
       if (empty($params['client']['email'])) {
