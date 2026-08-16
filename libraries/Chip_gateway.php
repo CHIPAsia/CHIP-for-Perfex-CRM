@@ -6,6 +6,20 @@ class Chip_gateway extends App_gateway
 {
   public bool $processingFees = true;
 
+  /**
+   * DuitNow QR group: duitnow_qr is the legacy identifier, dnqr the modern
+   * one. Exposed to merchants as a single "duitnow_qr" entry; dnqr is
+   * resolved at runtime via /payment_methods/ and prioritized.
+   */
+  const DUITNOW_GROUP = ['duitnow_qr', 'dnqr'];
+
+  /**
+   * Per-request cache of /payment_methods/ available methods, keyed by
+   * brand|currency|amount-bucket. Mirrors the WooCommerce transient but
+   * scoped to this request (no persistent cache layer available here).
+   */
+  protected static $payment_methods_cache = [];
+
   public function __construct()
   {
     /**
@@ -42,7 +56,7 @@ class Chip_gateway extends App_gateway
         'name' => 'payment_method_whitelist',
         'default_value' => '',
         'label' => 'Payment Method Whitelist (comma separated)',
-        'after' => '<p class="mbot15">Possible values: <code>fpx</code>, <code>fpx_b2b1</code>, <code>mastercard</code>, <code>maestro</code>, <code>visa</code>, <code>razer</code>, <code>razer_atome</code>, <code>razer_grabpay</code>, <code>razer_maybankqr</code>, <code>razer_shopeepay</code>, <code>razer_tng</code>, <code>duitnow_qr</code>. Set this to control the available payment method on checkout page. Default value is blank.</p>',
+        'after' => '<p class="mbot15">Possible values: <code>fpx</code>, <code>fpx_b2b1</code>, <code>mastercard</code>, <code>maestro</code>, <code>visa</code>, <code>razer</code>, <code>razer_atome</code>, <code>razer_grabpay</code>, <code>razer_maybankqr</code>, <code>razer_shopeepay</code>, <code>razer_tng</code>, <code>duitnow_qr</code>. Selecting <code>duitnow_qr</code> automatically enables <code>dnqr</code> (modern DuitNow QR) when the brand supports it; <code>dnqr</code> is resolved at runtime and is not a separate selectable. Set this to control the available payment method on checkout page. Default value is blank.</p>',
       ],
       [
         'name' => 'preferred_payment_method',
@@ -262,6 +276,8 @@ class Chip_gateway extends App_gateway
           }
         }
       }
+
+      $payment_method_whitelist = $this->resolve_duitnow_methods($payment_method_whitelist, $data['invoice']->currency_name, (int) round($data['amount'] * 100));
     }
 
     if (is_array($payment_method_whitelist) and !empty($payment_method_whitelist)) {
@@ -312,6 +328,76 @@ class Chip_gateway extends App_gateway
       echo 'Controller file for webhooks failed to be created. Please set <code>$config[\'csrf_exclude_uris\'][] = \'chip/chip/webhook\';</code> on your application/config.php file';
       echo '</div>';
     }
+  }
+
+  /**
+   * Resolve the configured payment_method_whitelist against the merchant's
+   * actual /payment_methods/ response, with dnqr-priority for the DuitNow QR
+   * group. Mirrors the proven resolver in chip-for-woocommerce.
+   *
+   * Steps:
+   *   1. Short-circuit: whitelist with no dnqr-group member is returned
+   *      untouched (no API call).
+   *   2. Expand the group and build a cache key brand|currency|amount-bucket.
+   *   3. Try the per-request cache; on miss call /payment_methods/.
+   *   4. Fallback: return the expanded whitelist unchanged if the API fails.
+   *   5. Intersect the group with the merchant's available methods.
+   *   6. Priority: dnqr wins when both are present.
+   *   7. Final = original non-group entries + resolved group.
+   *
+   * @param array  $whitelist Configured payment_method_whitelist.
+   * @param string $currency  Invoice currency code (e.g. 'MYR').
+   * @param int    $amount    Invoice total in sen.
+   * @return array            Final whitelist to send to CHIP.
+   */
+  protected function resolve_duitnow_methods(array $whitelist, string $currency, int $amount): array
+  {
+    // 1. Short-circuit: no dnqr-group member configured => return untouched.
+    if (count(array_intersect($whitelist, self::DUITNOW_GROUP)) === 0) {
+      return $whitelist;
+    }
+
+    // 2. Expand the group and build the cache key (amount-bucket in sen/100).
+    $expanded = array_values(array_unique(array_merge($whitelist, self::DUITNOW_GROUP)));
+    $cache_key = $this->getSetting('brand_id') . '|' . $currency . '|' . intval($amount / 100);
+
+    // 3. Try cache; on miss call /payment_methods/.
+    if (!array_key_exists($cache_key, self::$payment_methods_cache)) {
+      $available = null;
+
+      $this->ci->load->library(CHIP_MODULE_NAME . '/chip_api', [$this->getSetting('secret_key'), '']);
+      $chip = $this->ci->chip_api;
+      $chip->brand_id = $this->getSetting('brand_id');
+
+      $response = $chip->payment_methods($currency, $amount);
+
+      if (is_array($response) && isset($response['available_payment_methods'])) {
+        $available = $response['available_payment_methods'];
+      }
+
+      // 4. Fallback: return the expanded whitelist unchanged if API fails.
+      if ($available === null) {
+        return $expanded;
+      }
+
+      self::$payment_methods_cache[$cache_key] = $available;
+    } else {
+      $available = self::$payment_methods_cache[$cache_key];
+    }
+
+    // 5. Intersect: keep only group members the merchant actually has.
+    $resolved_group = array_values(array_intersect(self::DUITNOW_GROUP, $available));
+
+    // 6. Priority: dnqr wins when both are present.
+    if (in_array('dnqr', $resolved_group, true)) {
+      $resolved_group = array_values(array_diff($resolved_group, ['duitnow_qr']));
+    }
+
+    // 7. Final = original non-group entries + resolved group.
+    $final = array_values(array_diff($expanded, self::DUITNOW_GROUP));
+    $final = array_merge($final, $resolved_group);
+
+    return $final;
   }
 
   private function get_first_error(array $payment)
