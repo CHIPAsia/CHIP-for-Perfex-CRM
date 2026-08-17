@@ -64,7 +64,7 @@ class Chip_gateway extends App_gateway
         'name' => 'payment_method_whitelist',
         'default_value' => '',
         'label' => 'Payment Method Whitelist (comma separated)',
-        'after' => '<p class="mbot15">Possible values: <code>fpx</code>, <code>fpx_b2b1</code>, <code>mastercard</code>, <code>maestro</code>, <code>visa</code>, <code>razer</code>, <code>razer_atome</code>, <code>razer_grabpay</code>, <code>razer_maybankqr</code>, <code>shopee_pay</code>, <code>razer_tng</code>, <code>duitnow_qr</code>. Selecting <code>duitnow_qr</code> automatically enables <code>dnqr</code> (modern DuitNow QR) and selecting <code>shopee_pay</code> enables Shopee Pay; both are resolved at runtime based on brand availability and are not separate selectables. Legacy <code>razer_shopeepay</code> is auto-migrated to <code>shopee_pay</code>. Set this to control the available payment method on checkout page. Default value is blank.</p>',
+        'after' => '<p class="mbot15">Possible values: <code>fpx</code>, <code>fpx_b2b1</code>, <code>mastercard</code>, <code>maestro</code>, <code>visa</code>, <code>razer</code>, <code>razer_atome</code>, <code>razer_grabpay</code>, <code>razer_maybankqr</code>, <code>shopee_pay</code>, <code>razer_tng</code>, <code>duitnow_qr</code>, <code>crypto_coin</code>. Selecting <code>duitnow_qr</code> automatically enables <code>dnqr</code> (modern DuitNow QR) and selecting <code>shopee_pay</code> enables Shopee Pay; both are resolved at runtime based on brand availability and are not separate selectables. Legacy <code>razer_shopeepay</code> is auto-migrated to <code>shopee_pay</code>. Set this to control the available payment method on checkout page. Default value is blank.</p>',
       ],
       [
         'name' => 'preferred_payment_method',
@@ -271,7 +271,7 @@ class Chip_gateway extends App_gateway
       for ($i = 0; $i < sizeof($payment_method_whitelist); $i++) {
         $payment_method_whitelist[$i] = trim($payment_method_whitelist[$i]);
 
-        if (!in_array($payment_method_whitelist[$i], ['fpx', 'fpx_b2b1', 'mastercard', 'maestro', 'visa', 'razer', 'razer_atome', 'razer_grabpay', 'razer_maybankqr', 'razer_shopeepay', 'shopee_pay', 'razer_tng', 'duitnow_qr'])) {
+        if (!in_array($payment_method_whitelist[$i], ['fpx', 'fpx_b2b1', 'mastercard', 'maestro', 'visa', 'razer', 'razer_atome', 'razer_grabpay', 'razer_maybankqr', 'razer_shopeepay', 'shopee_pay', 'razer_tng', 'duitnow_qr', 'crypto_coin'])) {
           unset($payment_method_whitelist[$i]);
         }
       }
