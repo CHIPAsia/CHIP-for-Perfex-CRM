@@ -15,8 +15,9 @@ class Chip_gateway extends App_gateway
 
   /**
    * ShopeePay group: razer_shopeepay is the legacy identifier, shopee_pay the
-   * modern one. Exposed to merchants as a single "razer_shopeepay" entry;
+   * modern one. Exposed to merchants as a single "shopee_pay" entry;
    * shopee_pay is resolved at runtime via /payment_methods/ and prioritized.
+   * Legacy razer_shopeepay is auto-migrated to shopee_pay.
    */
   const SHOPEE_GROUP = ['razer_shopeepay', 'shopee_pay'];
 
@@ -63,7 +64,7 @@ class Chip_gateway extends App_gateway
         'name' => 'payment_method_whitelist',
         'default_value' => '',
         'label' => 'Payment Method Whitelist (comma separated)',
-        'after' => '<p class="mbot15">Possible values: <code>fpx</code>, <code>fpx_b2b1</code>, <code>mastercard</code>, <code>maestro</code>, <code>visa</code>, <code>razer</code>, <code>razer_atome</code>, <code>razer_grabpay</code>, <code>razer_maybankqr</code>, <code>razer_shopeepay</code>, <code>razer_tng</code>, <code>duitnow_qr</code>. Selecting <code>duitnow_qr</code> automatically enables <code>dnqr</code> (modern DuitNow QR) when the brand supports it; <code>dnqr</code> is resolved at runtime and is not a separate selectable. Set this to control the available payment method on checkout page. Default value is blank.</p>',
+        'after' => '<p class="mbot15">Possible values: <code>fpx</code>, <code>fpx_b2b1</code>, <code>mastercard</code>, <code>maestro</code>, <code>visa</code>, <code>razer</code>, <code>razer_atome</code>, <code>razer_grabpay</code>, <code>razer_maybankqr</code>, <code>shopee_pay</code>, <code>razer_tng</code>, <code>duitnow_qr</code>. Selecting <code>duitnow_qr</code> automatically enables <code>dnqr</code> (modern DuitNow QR) and selecting <code>shopee_pay</code> enables Shopee Pay; both are resolved at runtime based on brand availability and are not separate selectables. Legacy <code>razer_shopeepay</code> is auto-migrated to <code>shopee_pay</code>. Set this to control the available payment method on checkout page. Default value is blank.</p>',
       ],
       [
         'name' => 'preferred_payment_method',
@@ -270,9 +271,17 @@ class Chip_gateway extends App_gateway
       for ($i = 0; $i < sizeof($payment_method_whitelist); $i++) {
         $payment_method_whitelist[$i] = trim($payment_method_whitelist[$i]);
 
-        if (!in_array($payment_method_whitelist[$i], ['fpx', 'fpx_b2b1', 'mastercard', 'maestro', 'visa', 'razer', 'razer_atome', 'razer_grabpay', 'razer_maybankqr', 'razer_shopeepay', 'razer_tng', 'duitnow_qr'])) {
+        if (!in_array($payment_method_whitelist[$i], ['fpx', 'fpx_b2b1', 'mastercard', 'maestro', 'visa', 'razer', 'razer_atome', 'razer_grabpay', 'razer_maybankqr', 'razer_shopeepay', 'shopee_pay', 'razer_tng', 'duitnow_qr'])) {
           unset($payment_method_whitelist[$i]);
         }
+      }
+
+      // Backward-compat: legacy merchants saved `razer_shopeepay`. Store the
+      // modern `shopee_pay` key; the resolver still expands both for availability.
+      if (in_array('razer_shopeepay', $payment_method_whitelist, true) && !in_array('shopee_pay', $payment_method_whitelist, true)) {
+        $payment_method_whitelist = array_map(function ($pm) {
+          return $pm === 'razer_shopeepay' ? 'shopee_pay' : $pm;
+        }, $payment_method_whitelist);
       }
 
       foreach (['razer_atome', 'razer_grabpay', 'razer_tng', 'razer_shopeepay', 'razer_maybankqr'] as $ewallet) {
