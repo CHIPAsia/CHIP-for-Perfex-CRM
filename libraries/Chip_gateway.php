@@ -160,7 +160,7 @@ class Chip_gateway extends App_gateway
       $chip = $this->ci->chip_api;
       $chip->brand_id = $brand_id;
 
-      $available_payment_method = $chip->payment_methods('MYR');
+      $available_payment_method = $chip->payment_methods('MYR', 1000);
 
       if (isset($available_payment_method['available_payment_methods']) and empty($available_payment_method['available_payment_methods'])) {
         echo '<div class="alert alert-info mtop15">';
