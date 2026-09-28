@@ -3,7 +3,7 @@
 /*
 Module Name: CHIP for PerfexCRM
 Description: Integrate CHIP with PerfexCRM
-Version: 1.0.1
+Version: 1.0.2
 Requires at least: 2.3.*
 */
 
