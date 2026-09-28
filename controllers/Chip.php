@@ -7,7 +7,22 @@ class Chip extends App_Controller
     $this->db->where('id', $invoice_id);
     $invoice = $this->db->get(db_prefix() . 'invoices')->row();
 
+    if (!$invoice) {
+      redirect(site_url('invoice/' . $invoice_id . '/' . $invoice_hash));
+      return;
+    }
+
     $payment = $this->chip_gateway->get_payment($invoice->token);
+
+    // get_payment() returns null when the lookup fails (invalid credential,
+    // non-2xx, transport error) or when the invoice has no token yet. Reading
+    // $payment['status'] on null is a TypeError on PHP 8, which is not an
+    // Exception and escapes the request as an uncaught fatal.
+    if (!is_array($payment) || !isset($payment['status'])) {
+      set_alert('danger', 'Unable to verify the payment with CHIP. Please try again.');
+      redirect(site_url('invoice/' . $invoice_id . '/' . $invoice_hash));
+      return;
+    }
 
     if ($payment['status'] == 'paid') {
       set_alert( 'success' , _l( 'online_payment_recorded_success'));
@@ -43,6 +58,14 @@ class Chip extends App_Controller
     }
 
     $payment = json_decode($content, true);
+
+    // A malformed or non-object body decodes to null, and reading
+    // $payment['status'] on null is a TypeError on PHP 8 rather than a
+    // catchable error. Reject the payload before touching it.
+    if ( !is_array($payment) || !isset($payment['status']) ) {
+      header('Bad Request', true, 400);
+      die('Invalid payload');
+    }
 
     if ( $payment['status'] != 'paid' ) {
       exit;

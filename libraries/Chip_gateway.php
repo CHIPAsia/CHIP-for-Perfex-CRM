@@ -139,9 +139,12 @@ class Chip_gateway extends App_gateway
 
     $public_key = $chip->public_key();
 
-    if (is_array($public_key)) {
+    // public_key() returns null on every failure shape (invalid credential,
+    // non-2xx, transport error). Storing null would blank the option and
+    // silently break webhook signature verification, so report it instead.
+    if ($public_key === null) {
       echo '<div class="alert alert-info mtop15">';
-      echo $this->get_first_error($public_key);
+      echo htmlspecialchars($this->api_error_message($chip), ENT_QUOTES, 'UTF-8');
       echo '</div>';
 
       return;
@@ -186,12 +189,6 @@ class Chip_gateway extends App_gateway
 
     $redirect_url = site_url('chip/chip/redirect/' . $data['invoice']->id . '/' . $data['invoice']->hash . '/' . $data['payment_attempt']->reference);
 
-    $due_strict_timing = preg_replace('/[^0-9]/', '', $this->getSetting('due_strict'));
-    if (empty($due_strict_timing)) {
-      $due_strict_timing = 60;
-    }
-    $due_strict_timing = time() + (abs((int)$due_strict_timing) * 60);
-
     $timezone = $this->getSetting('purchase_timezone');
 
     if (!in_array($timezone, DateTimeZone::listIdentifiers(DateTimeZone::ALL))) {
@@ -203,21 +200,29 @@ class Chip_gateway extends App_gateway
       'success_redirect' => $redirect_url,
       'failure_redirect' => $redirect_url,
       'cancel_redirect' => $redirect_url,
-      'creator_agent' => 'PerfexCRM: 1.0.1',
+      'creator_agent' => 'PerfexCRM: ' . $this->module_version(),
       'platform' => 'perfexcrm',
       'reference' => $data['invoiceid'],
-      'due' => $due_strict_timing,
       'send_receipt' => $this->getSetting('send_receipt'),
       'purchase' => [
         'total_override' => round($data['amount'] * 100),
         'timezone' => $timezone,
         'currency' => $data['invoice']->currency_name,
-        'due_strict' => $this->getSetting('due_strict'),
+        'due_strict' => (bool) $this->getSetting('due_strict'),
         'products' => [],
       ],
       'brand_id' => $this->getSetting('brand_id'),
       'client' => [],
     ];
+
+    // Omit `due` entirely when the merchant has no due limit configured.
+    // Sending time() + 0 produces a timestamp that is already in the past by
+    // the time the gateway reads it, and the purchase is rejected with
+    // `due` cannot be in the past! (due_not_greater_than_now).
+    $due = $this->resolve_due_timestamp($this->getSetting('due_strict_timing'));
+    if ($due !== null) {
+      $params['due'] = $due;
+    }
 
     foreach ($data['invoice']->items as $item) {
 
@@ -271,7 +276,7 @@ class Chip_gateway extends App_gateway
       for ($i = 0; $i < sizeof($payment_method_whitelist); $i++) {
         $payment_method_whitelist[$i] = trim($payment_method_whitelist[$i]);
 
-        if (!in_array($payment_method_whitelist[$i], ['fpx', 'fpx_b2b1', 'mastercard', 'maestro', 'visa', 'razer', 'razer_atome', 'razer_grabpay', 'razer_maybankqr', 'razer_shopeepay', 'shopee_pay', 'razer_tng', 'duitnow_qr', 'crypto_coin'])) {
+        if (!in_array($payment_method_whitelist[$i], ['fpx', 'fpx_b2b1', 'mastercard', 'maestro', 'visa', 'razer', 'razer_atome', 'razer_grabpay', 'razer_maybankqr', 'razer_shopeepay', 'shopee_pay', 'razer_tng', 'duitnow_qr', 'dnqr', 'crypto_coin', 'mpgs_google_pay', 'mpgs_apple_pay'])) {
           unset($payment_method_whitelist[$i]);
         }
       }
@@ -306,14 +311,14 @@ class Chip_gateway extends App_gateway
 
     $payment = $chip->create_payment($params);
 
-    if (!array_key_exists('id', $payment)) {
+    // Chip_api::call() returns null for every failure shape (transport error,
+    // non-2xx status, unparseable body, error payload). Dereferencing null
+    // with array_key_exists() raises a TypeError on PHP 8, which is not an
+    // Exception and therefore escapes this method entirely, turning a failed
+    // purchase into an uncaught fatal instead of a reportable payment error.
+    if (!is_array($payment) || !array_key_exists('id', $payment)) {
 
-      if (is_array($payment)) {
-        $error = $this->get_first_error($payment);
-        set_alert('danger', str_replace('"', '', $error));
-      } else {
-        set_alert('danger', 'Failed to create purchase.');
-      }
+      set_alert('danger', $this->api_error_message($chip));
       redirect(site_url('invoice/' . $data['invoice']->id . '/' . $data['invoice']->hash));
       return;
     }
@@ -435,14 +440,74 @@ class Chip_gateway extends App_gateway
     return $final;
   }
 
-  private function get_first_error(array $payment)
+  /**
+   * Returns the `due` timestamp for a purchase, or null when it is disabled.
+   *
+   * The merchant configures the window with the `due_strict_timing` setting
+   * (minutes). An empty value means "no due limit", and coercing it with
+   * absint() yields 0, so `time() + 0` is already in the past by the time the
+   * gateway processes the request and every purchase is rejected with:
+   *
+   *   `due` cannot be in the past! (due_not_greater_than_now)
+   *
+   * Returning null lets the caller leave the parameter out entirely, which is
+   * what "no due limit" means to the API. Mirrors the WooCommerce and GiveWP
+   * gateways' resolve_due_timestamp().
+   *
+   * @param mixed $due_strict_timing Raw timing value in minutes.
+   * @return int|null Due timestamp, or null when disabled.
+   */
+  protected function resolve_due_timestamp($due_strict_timing)
   {
-    foreach ($payment as $key => $value) {
-      if (!is_numeric($key)) {
-        return $key . ' ' . $this->get_first_error($value);
-      } else {
-        return $value['message'];
+    if ('' === $due_strict_timing || null === $due_strict_timing || false === $due_strict_timing) {
+      return null;
+    }
+
+    $minutes = abs((int) preg_replace('/[^0-9]/', '', (string) $due_strict_timing));
+    if (0 === $minutes) {
+      return null;
+    }
+
+    return time() + ($minutes * 60);
+  }
+
+  /**
+   * The module version, read from the module header so `creator_agent` cannot
+   * drift from the released version the way a hardcoded literal does.
+   *
+   * @return string Module version, or '0' when the header is unreadable.
+   */
+  protected function module_version()
+  {
+    $init = APP_MODULES_PATH . CHIP_MODULE_NAME . '/' . CHIP_MODULE_NAME . '.php';
+
+    if (is_readable($init) && preg_match('|Version:(.*)|i', (string) file_get_contents($init), $m)) {
+      return trim($m[1]);
+    }
+
+    return '0';
+  }
+
+  /**
+   * The reason the last CHIP call failed, ready to show to the merchant.
+   *
+   * Api failures now return null rather than an error array, so the detail
+   * rides on the api instance. Falls back to a generic line when the instance
+   * predates the last_error property.
+   *
+   * @param object $chip Chip_api instance.
+   * @return string Human-readable message.
+   */
+  private function api_error_message($chip)
+  {
+    if (is_object($chip) && method_exists($chip, 'get_last_error')) {
+      $error = $chip->get_last_error();
+
+      if (is_string($error) && $error !== '') {
+        return str_replace('"', '', $error);
       }
     }
+
+    return 'Failed to communicate with CHIP.';
   }
 }
